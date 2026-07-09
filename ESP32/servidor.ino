@@ -4,7 +4,7 @@
 #include <ESPDash.h>
 
 const char* ssid = ""; // SSID
-const char* password = ""; // Password
+const char* password = ""; // Contraseña
 const int LED = 2;
 
 AsyncWebServer server(80);
