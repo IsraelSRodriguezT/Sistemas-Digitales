@@ -3,8 +3,8 @@
 #include <ESPAsyncWebServer.h>
 #include <ESPDash.h>
 
-const char* ssid = "Internet_UNL"; // SSID
-const char* password = "UNL1859WiFi"; // Password
+const char* ssid = ""; // SSID
+const char* password = ""; // Password
 const int LED = 2;
 
 AsyncWebServer server(80);
