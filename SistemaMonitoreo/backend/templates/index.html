@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monitoreo Incendios Forestales</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; padding: 20px; }
+  h1 { text-align: center; margin-bottom: 24px; color: #fbbf24; }
+
+  .alarma { display: none; background: #dc2626; color: #fff; text-align: center; padding: 12px 20px;
+    font-size: 1.3rem; font-weight: bold; border-radius: 8px; margin-bottom: 20px;
+    align-items: center; justify-content: center; gap: 20px; }
+  .alarma.active { display: flex; }
+  .btn-silenciar { background: #fff; color: #dc2626; border: none; padding: 6px 18px;
+    border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 0.9rem; }
+  .btn-silenciar:hover { background: #f1f5f9; }
+
+  .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.7); z-index: 1000; justify-content: center; align-items: center; }
+  .modal-overlay.active { display: flex; }
+  .modal { background: #1e293b; border: 2px solid #dc2626; border-radius: 16px; padding: 32px;
+    max-width: 420px; width: 90%; text-align: center; }
+  .modal h2 { color: #dc2626; font-size: 1.5rem; margin-bottom: 20px; }
+  .modal p { font-size: 1.1rem; margin: 8px 0; color: #cbd5e1; }
+  .modal .dato { font-size: 1.3rem; font-weight: bold; color: #fbbf24; }
+  .btn-confirmar { background: #dc2626; color: #fff; border: none; padding: 12px 32px;
+    border-radius: 8px; font-size: 1rem; font-weight: bold; cursor: pointer; margin-top: 20px; }
+  .btn-confirmar:hover { background: #b91c1c; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .card { background: #1e293b; border-radius: 12px; padding: 20px; border: 2px solid #334155; }
+  .card.critico { border-color: #dc2626; background: #2d1a1a; }
+  .card h3 { font-size: 0.85rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 8px; }
+  .card .valor { font-size: 1.8rem; font-weight: bold; margin: 8px 0; }
+  .card .estado { font-size: 0.95rem; font-weight: bold; }
+  .estado.ok { color: #22c55e; }
+  .estado.alerta { color: #dc2626; }
+  .card .hora { font-size: 0.75rem; color: #64748b; margin-top: 4px; }
+
+  .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+  @media (max-width: 768px) { .charts { grid-template-columns: 1fr; } }
+  .chart-box { background: #1e293b; border-radius: 12px; padding: 16px; }
+  .chart-box h2 { font-size: 1rem; margin-bottom: 12px; color: #94a3b8; }
+
+  table { width: 100%; border-collapse: collapse; background: #1e293b; border-radius: 12px; overflow: hidden; }
+  th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid #334155; font-size: 0.9rem; }
+  th { color: #94a3b8; font-size: 0.8rem; text-transform: uppercase; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: bold; }
+  .badge.FIRE { background: #dc2626; color: #fff; }
+  .badge.SOSPECHA { background: #f59e0b; color: #000; }
+  .badge.CAMBIO_BRUSCO { background: #6366f1; color: #fff; }
+
+  .filtros { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+  .filtros label { color: #94a3b8; font-size: 0.85rem; display: flex; align-items: center; gap: 6px; }
+  .filtros select, .filtros input { background: #1e293b; color: #e2e8f0; border: 1px solid #334155;
+    border-radius: 6px; padding: 6px 10px; font-size: 0.85rem; }
+  .filtros button { background: #3b82f6; color: #fff; border: none; padding: 6px 16px;
+    border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 0.85rem; }
+  .filtros button:hover { background: #2563eb; }
+</style>
+</head>
+<body>
+<h1>Monitoreo de Incendios Forestales</h1>
+
+<div id="alarmaBar" class="alarma">
+  <span>ALERTA DE INCENDIO DETECTADA</span>
+  <button class="btn-silenciar" onclick="silenciarAlarma()">Silenciar</button>
+</div>
+
+<div id="modalAlarma" class="modal-overlay">
+  <div class="modal">
+    <h2>ALERTA DE INCENDIO</h2>
+    <p>Nodo: <span id="modalNodo" class="dato"></span></p>
+    <p>Temperatura: <span id="modalTemp" class="dato"></span></p>
+    <p>Nivel de humo: <span id="modalHumo" class="dato"></span></p>
+    <button class="btn-confirmar" onclick="confirmarAlarma()">Confirmar Alarma</button>
+  </div>
+</div>
+
+<div class="grid" id="cards"></div>
+
+<div class="charts">
+  <div class="chart-box"><h2>Temperatura (°C)</h2><canvas id="chartTemp"></canvas></div>
+  <div class="chart-box"><h2>Nivel de Humo (ppm)</h2><canvas id="chartHumo"></canvas></div>
+</div>
+
+<h2 style="margin-bottom:12px;color:#94a3b8;font-size:1rem;">Alertas Recientes</h2>
+<div class="filtros">
+  <label>Nodo:
+    <select id="filtroNodo">
+      <option value="">Todos</option>
+      <option value="1">Nodo 1</option>
+      <option value="2">Nodo 2</option>
+    </select>
+  </label>
+  <label>Desde:
+    <input type="datetime-local" id="filtroDesde">
+  </label>
+  <label>Hasta:
+    <input type="datetime-local" id="filtroHasta">
+  </label>
+  <button onclick="aplicarFiltros()">Filtrar</button>
+</div>
+<table>
+  <thead><tr><th>Nodo</th><th>Tipo</th><th>Mensaje</th><th>Hora</th></tr></thead>
+  <tbody id="alertasBody"></tbody>
+</table>
+
+<script>
+const COLORS = ['#3b82f6', '#f59e0b'];
+let chartTemp, chartHumo;
+let silenciado = false;
+let intervaloBeep = null;
+let estadoPrevio = {1: false, 2: false};
+
+function initCharts() {
+  const ctxT = document.getElementById('chartTemp').getContext('2d');
+  const ctxH = document.getElementById('chartHumo').getContext('2d');
+  chartTemp = new Chart(ctxT, {
+    type: 'line', data: { labels: [], datasets: [] },
+    options: {
+      responsive: true, animation: false,
+      scales: {
+        x: { ticks: { color: '#94a3b8', maxTicksLimit: 10 }, grid: { color: '#334155' } },
+        y: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } }
+      },
+      plugins: { legend: { labels: { color: '#e2e8f0' } } }
+    }
+  });
+  chartHumo = new Chart(ctxH, {
+    type: 'line', data: { labels: [], datasets: [] },
+    options: {
+      responsive: true, animation: false,
+      scales: {
+        x: { ticks: { color: '#94a3b8', maxTicksLimit: 10 }, grid: { color: '#334155' } },
+        y: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } }
+      },
+      plugins: { legend: { labels: { color: '#e2e8f0' } } }
+    }
+  });
+}
+
+function beep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    osc.type = 'sine';
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.4);
+  } catch (e) {}
+}
+
+function iniciarSonido() {
+  if (intervaloBeep) return;
+  beep();
+  intervaloBeep = setInterval(beep, 1500);
+}
+
+function detenerSonido() {
+  if (intervaloBeep) {
+    clearInterval(intervaloBeep);
+    intervaloBeep = null;
+  }
+}
+
+function silenciarAlarma() {
+  silenciado = true;
+  detenerSonido();
+  document.getElementById('alarmaBar').classList.remove('active');
+}
+
+function confirmarAlarma() {
+  document.getElementById('modalAlarma').classList.remove('active');
+}
+
+function renderCards(resumen) {
+  const container = document.getElementById('cards');
+  container.innerHTML = '';
+  resumen.forEach(r => {
+    const critico = r.nivel_humo > 2800 && r.temperatura > 45;
+    container.innerHTML += `
+      <div class="card ${critico ? 'critico' : ''}">
+        <h3>Nodo ${r.id_nodo}</h3>
+        <div class="valor">${r.temperatura.toFixed(1)}°C | ${r.nivel_humo}</div>
+        <div class="estado ${critico ? 'alerta' : 'ok'}">${critico ? 'Alerta' : 'Normal'}</div>
+        <div class="hora">${r.timestamp || ''}</div>
+      </div>`;
+  });
+}
+
+function updateCharts(datos) {
+  const nodos = {};
+  datos.reverse().forEach(d => {
+    const id = d.id_nodo;
+    if (!nodos[id]) nodos[id] = { labels: [], temp: [], humo: [] };
+    const t = d.timestamp || '';
+    nodos[id].labels.push(t.substring ? t.substring(11, 19) : t);
+    nodos[id].temp.push(d.temperatura);
+    nodos[id].humo.push(d.nivel_humo);
+  });
+  const ids = Object.keys(nodos).sort();
+  chartTemp.data.labels = ids.length > 0 ? nodos[ids[0]].labels.slice(-30) : [];
+  chartTemp.data.datasets = ids.map((id, i) => ({
+    label: 'Nodo ' + id,
+    data: nodos[id].temp.slice(-30),
+    borderColor: COLORS[i % 2],
+    tension: 0.3,
+    pointRadius: 2
+  }));
+  chartTemp.update();
+  chartHumo.data.labels = ids.length > 0 ? nodos[ids[0]].labels.slice(-30) : [];
+  chartHumo.data.datasets = ids.map((id, i) => ({
+    label: 'Nodo ' + id,
+    data: nodos[id].humo.slice(-30),
+    borderColor: COLORS[i % 2],
+    tension: 0.3,
+    pointRadius: 2
+  }));
+  chartHumo.update();
+}
+
+function renderAlertas(alertas) {
+  const body = document.getElementById('alertasBody');
+  body.innerHTML = alertas.map(a => `
+    <tr>
+      <td>Nodo ${a.id_nodo}</td>
+      <td><span class="badge ${a.tipo}">${a.tipo}</span></td>
+      <td style="font-size:0.8rem;">${a.mensaje}</td>
+      <td style="font-size:0.8rem;color:#64748b;">${a.timestamp || ''}</td>
+    </tr>`).join('');
+}
+
+function aplicarFiltros() {
+  fetchAll();
+}
+
+function urlAlertas() {
+  let params = new URLSearchParams();
+  const nodo = document.getElementById('filtroNodo').value;
+  const desde = document.getElementById('filtroDesde').value;
+  const hasta = document.getElementById('filtroHasta').value;
+  if (nodo) params.set('nodo', nodo);
+  if (desde) params.set('desde', desde.replace('T', ' ') + ':00');
+  if (hasta) params.set('hasta', hasta.replace('T', ' ') + ':59');
+  return '/api/alertas?' + params.toString();
+}
+
+function procesarResumen(resumen) {
+  let estadoActual = {};
+  resumen.forEach(r => { estadoActual[r.id_nodo] = r.nivel_humo > 2800 && r.temperatura > 45; });
+
+  for (const id in estadoActual) {
+    const prev = estadoPrevio[id] || false;
+    const curr = estadoActual[id];
+    if (curr && !prev) {
+      silenciado = false;
+      document.getElementById('modalNodo').textContent = id;
+      const datos = resumen.find(r => r.id_nodo == id);
+      document.getElementById('modalTemp').textContent = datos.temperatura.toFixed(1) + ' °C';
+      document.getElementById('modalHumo').textContent = datos.nivel_humo + ' ppm';
+      document.getElementById('modalAlarma').classList.add('active');
+    }
+  }
+  estadoPrevio = estadoActual;
+
+  const algunCritico = Object.values(estadoActual).some(v => v);
+  if (!algunCritico) {
+    detenerSonido();
+    document.getElementById('alarmaBar').classList.remove('active');
+    document.getElementById('modalAlarma').classList.remove('active');
+    silenciado = false;
+    return;
+  }
+
+  if (!silenciado) {
+    document.getElementById('alarmaBar').classList.add('active');
+    iniciarSonido();
+  }
+}
+
+async function fetchAll() {
+  try {
+    const [datos, alertas, resumen] = await Promise.all([
+      fetch('/api/datos').then(r => r.json()),
+      fetch(urlAlertas()).then(r => r.json()),
+      fetch('/api/resumen').then(r => r.json())
+    ]);
+    renderCards(resumen);
+    updateCharts(datos);
+    renderAlertas(alertas);
+    procesarResumen(resumen);
+  } catch (e) { console.error(e); }
+}
+
+initCharts();
+fetchAll();
+setInterval(fetchAll, 3000);
+</script>
+</body>
+</html>
